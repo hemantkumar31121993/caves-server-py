@@ -21,39 +21,47 @@ def checkauth(req):
 
 def levelnchallenge(n, data):
     try:
-        req = json.loads(data)
-        succ, level = checkauth(req)
-        if succ is True and level >= n - 1:
-            cursor.execute("select * from level" + str(n) + "ques where Team = %s", (req['teamname'],))
-	    response = {'challenge': cursor.fetchone()[1]}
-        elif succ is True:
-            response = {'error': 'Solve previous chapters first'}
+        if n < 8:
+            req = json.loads(data)
+	    succ, level = checkauth(req)
+	    if succ is True and level >= n - 1:
+		cursor.execute("select * from level" + str(n) + "ques where Team = %s", (req['teamname'],))
+		response = {'challenge': cursor.fetchone()[1]}
+	    elif succ is True:
+		response = {'error': 'Solve previous chapters first'}
+	    else:
+		response = {'error': 'Invalid Credentials'}
+	    return json.dumps(response)
         else:
-            response = {'error': 'Invalid Credentials'}
-        return json.dumps(response)
+	    response = {'error': 'Maximum level is 7'}
+            return json.dumps(response)	
     except:
 	response = {'error': 'Exception occured'}
         return json.dumps(response)
 
 def checkLeveln(n, data):
     try:
-        req = json.loads(request.data)
-        succ, level = checkauth(req)
-        if not 'answer' in req:
-            response = {'error': 'Post data should contain an answer'}
-            return json.dumps(response)
-        if succ is True:
-            cursor.execute("select * from level" + str(n) + "sol where Team = %s and Password = %s", (req['teamname'], req['answer']))
-            if int(cursor.rowcount) > 0:
-                if level == n - 1:
-		    cursor.execute("update cred set currentLevel = " + str(n) + " where Team = %s", (req['teamname'],))
-                response = {'success': True}
-            else:
-                response = {'success': False}
-	else:
-            response = {'error': 'Invalid Credentials'}
-        print response
-        return json.dumps(response);
+	if n < 8:
+            req = json.loads(request.data)
+	    succ, level = checkauth(req)
+	    if not 'answer' in req:
+		response = {'error': 'Post data should contain an answer'}
+		return json.dumps(response)
+	    if succ is True:
+		cursor.execute("select * from level" + str(n) + "sol where Team = %s and Password = %s", (req['teamname'], req['answer']))
+		if int(cursor.rowcount) > 0:
+		    if level == n - 1:
+			cursor.execute("update cred set currentLevel = " + str(n) + " where Team = %s", (req['teamname'],))
+		    response = {'success': True}
+		else:
+		    response = {'success': False}
+	    else:
+		response = {'error': 'Invalid Credentials'}
+	    print response
+	    return json.dumps(response);
+        else:
+	    response = {'error': 'Maximum level is 7'}
+            return json.dumps(response)	
     except:
 	response = {'error': 'Exception occured'}
         return json.dumps(response)
@@ -74,9 +82,13 @@ def login():
         return json.dumps(response)
         
 
+@app.route("/level6challenge", methods=['POST'])
+def level6challenge():
+    
+
 @app.route("/level<int:n>challenge", methods=['POST'])
-def level1challenge(n):
-	return levelnchallenge(n, request.data)
+def getchallenge(n):
+    return levelnchallenge(n, request.data)
 
 @app.route("/checkLevel<int:n>", methods=['POST'])
 def checkLevel1(n):
