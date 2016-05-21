@@ -6,7 +6,7 @@ from OpenSSL import SSL
 
 app = Flask(__name__, static_folder='game')
 
-conn = MySQLdb.connect(host="localhost", user="root", passwd="wdinlm", db="caves")
+conn = MySQLdb.connect(host="localhost", user="root", passwd="rootp", db="caves")
 conn.autocommit(True)
 cursor = conn.cursor()
 
@@ -123,16 +123,34 @@ def login():
         return json.dumps(response)
 
 
-#@app.route("/level6challenge", methods=['POST'])
-#def level6challenge():
-
+def level6challenge():
+    try:
+        req = json.loads(request.data)
+        succ, level, d1, d2 = checkauth(req)
+        if succ is True and level >= 5:
+            cursor.execute("select n, Challenge from level6 where Team = %s", (req['teamname'],))
+            temp = cursor.fetchone()
+            challenge = "n=" + temp[0] + "\n\n" + req['teamname'] + ": This door has RSA encryption with exponent 5 and the password is " + temp[1]
+            response = {'challenge': challenge}
+        elif succ is True:
+            response = {'error': 'Solve previous chapters first'}
+        else:
+            response = {'error': 'Invalid Credentials'}
+        return json.dumps(response)
+    except Exception, e:
+        print e
+	response = {'error': 'There is some problem with the server'}
+        return json.dumps(response)
 
 @app.route("/challenge<int:n>", methods=['POST'])
 def getchallenge(n):
-    return levelnchallenge(n, request.data)
+    if n == 6:
+        return level6challenge()
+    else:
+        return levelnchallenge(n, request.data)
 
 @app.route("/checkLevel<int:n>", methods=['POST'])
-def checkLevel1(n):
+def checkLevel(n):
     return checkLeveln(n, request.data)
 
 @app.route("/fw", methods=['POST'])
@@ -167,7 +185,6 @@ def freeSpirit():
                 response = {'success': False}
         else:
             response = {'error': 'Invalid Credentials'}
-        print response
         return json.dumps(response);
     except:
 	response = {'error': 'There is some problem with the server'}
@@ -179,7 +196,7 @@ def getDESEncryption(teamname, plaintext):
         return cursor.fetchone()[0]
     else:
 	return "3bafebc456d7e789"
-        
+
 def getAESEncryption(teamname, plaintext):
     if plaintext == 'password':
         cursor.execute("select Challenge from level5 where Team = %s", (teamname,))
@@ -199,7 +216,7 @@ def des():
                         addAuthenticAESTeam(req['teamname'], req['password'])
                         response = {'success': True}
                     else:
-	                encText = getDESEncryption(req['teamname'], req['plaintext']) 
+	                encText = getDESEncryption(req['teamname'], req['plaintext'])
                         response = {'ciphertext': encText, 'success': False}
 	        else:
 		    response = {'error': 'Invalid Credentials'}
@@ -225,7 +242,7 @@ def aes():
 			cursor.execute("update cred set currentLevel = 5 where Team = %s", (req['teamname'],))
                         response = {'success': True}
                     else:
-	                encText = getAESEncryption(req['teamname'], req['plaintext']) 
+	                encText = getAESEncryption(req['teamname'], req['plaintext'])
                         response = {'ciphertext': encText, 'success': False}
 	        else:
 		    response = {'error': 'Invalid Credentials'}
