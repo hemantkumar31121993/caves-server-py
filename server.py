@@ -2,7 +2,12 @@ from flask import Flask, request
 import MySQLdb
 import json
 import hashlib
+from des import level4
+from des import pyDES
+from des import constants
+from eaeae import level5
 from OpenSSL import SSL
+import traceback
 
 app = Flask(__name__, static_folder='game')
 
@@ -36,8 +41,39 @@ def addAuthenticAESTeam(teamname, password):
         result = cursor.fetchone()
         authenticAESTeams[teamname] = (password, result[0], result[1], result[2])
 
+cursor.execute("Select Team, DESKey from level4")
+result = cursor.fetchall()
+for item in result:
+    key_bin = pyDES.hex_to_binary(item[1])
+    K0 = pyDES.shuffle(key_bin, constants.pc1)
+    keys_components = [(K0[0:28], K0[28:56])]
+    level4.keys[item[0]] = pyDES.generateKeys(keys_components)
+
+#print level4.keys
+
+cursor.execute("Select Team, AMat, EVec from level5")
+result = cursor.fetchall()
+#print result
+for item in result:
+    mat = []
+    rows = item[1].split(";")
+    count = 0
+    for item1 in rows:
+        mat.append([])
+        values = item1.split(" ")
+        for item2 in values:
+            mat[count].append(int(item2))
+        count += 1
+    vec = []
+    EVecValues = item[2].split(" ")
+    for item1 in EVecValues:
+        vec.append(int(item1))
+    level5.keys[item[0]] = (mat, vec)
+
+#print level5.keys
+
 def checkauth(req):
-    print req
+    #print req
     if (not 'teamname' in req) or (not 'password' in req):
         return (False, 0, 0, 0)
     team_name = req['teamname']
@@ -56,7 +92,7 @@ def MD5(text):
 
 def levelnchallenge(n, data):
     try:
-        print data
+        #print data
         if n < 8:
             req = json.loads(data)
             succ, level, d1, d2 = checkauth(req)
@@ -96,7 +132,7 @@ def checkLeveln(n, data):
 		    response = {'success': False}
 	    else:
 		response = {'error': 'Invalid Credentials'}
-	    print response
+	    #print response
 	    return json.dumps(response);
         else:
 	    response = {'error': 'Maximum level is 7'}
@@ -108,14 +144,14 @@ def checkLeveln(n, data):
 @app.route("/login", methods=['POST'])
 def login():
     try:
-        print request.data
+        #print request.data
         req = json.loads(request.data)
         succ, level, wf, sf = checkauth(req)
         if succ is True:
             response = {'ct': level, 'wf': bool(wf), 'sf': bool(sf)}
         else:
 	    response = {'error': 'Invalid Credentials'}
-        print response
+        #print response
         return json.dumps(response)
     except Exception, e:
         print e
@@ -166,7 +202,7 @@ def foundWand():
                 response = {'success': False}
         else:
             response = {'error': 'Invalid Credentials'}
-        print response
+        #print response
         return json.dumps(response);
     except:
 	response = {'error': 'There is some problem with the server'}
@@ -195,14 +231,14 @@ def getDESEncryption(teamname, plaintext):
         cursor.execute("select Challenge from level4 where Team = %s", (teamname,))
         return cursor.fetchone()[0]
     else:
-	return "3bafebc456d7e789"
+	return level4.desEncryption(plaintext, teamname)
 
-def getAESEncryption(teamname, plaintext):
+def getEAEAEEncryption(teamname, plaintext):
     if plaintext == 'password':
         cursor.execute("select Challenge from level5 where Team = %s", (teamname,))
         return cursor.fetchone()[0]
     else:
-	return "3bafebbcd6d7e789"
+	return level5.eaeaeEncryption(plaintext, teamname)
 
 @app.route("/des", methods=['POST'])
 def des():
@@ -230,11 +266,11 @@ def des():
 	response = {'error': 'There is some problem with the server'}
         return json.dumps(response)
 
-@app.route("/aes", methods=['POST'])
-def aes():
+@app.route("/eaeae", methods=['POST'])
+def eaeae():
     try:
         req = json.loads(request.data)
-        print req;
+        #print req;
         if ('teamname' in req) and ('password' in req) and ('plaintext' in req):
 	    if req['teamname'] in authenticAESTeams:
 	        if authenticAESTeams[req['teamname']][0] == req['password']:
@@ -242,7 +278,7 @@ def aes():
 			cursor.execute("update cred set currentLevel = 5 where Team = %s", (req['teamname'],))
                         response = {'success': True}
                     else:
-	                encText = getAESEncryption(req['teamname'], req['plaintext'])
+	                encText = getEAEAEEncryption(req['teamname'], req['plaintext'])
                         response = {'ciphertext': encText, 'success': False}
 	        else:
 		    response = {'error': 'Invalid Credentials'}
@@ -253,6 +289,7 @@ def aes():
         return json.dumps(response)
     except Exception, e:
         print e.message
+        traceback.print_exc()
 	response = {'error': 'There is some problem with the server'}
         return json.dumps(response)
 

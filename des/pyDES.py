@@ -111,35 +111,3 @@ def decryptDESAux(input, steps, keys):
     output.extend(right)
     return output
 
-# ignore parity bits
-key_hex = "0ABCD232EA6DABCD"
-key_bin = hex_to_binary(key_hex)
-
-K0 = shuffle(key_bin, constants.pc1)
-keys_components = [(K0[0:28], K0[28:56])]
-keys = generateKeys(keys_components)
-
-
-if __name__ == "__main__":
-    data = "abcdefg"
-    data = round(data, 8)
-    rounds = 5
-
-    data_binary = bitarray(''.join(format(ord(i),'b').zfill(8) for i in data))
-
-    cipher_bitarray = encryptDES(data_binary, rounds, keys)
-    cipher_binary = cipher_bitarray.to01()
-    cipher_hex = '%0*X' % ((len(cipher_binary) + 3) // 4, int(cipher_binary, 2))
-
-    message_bitarray = decryptDES(cipher_bitarray, rounds, keys)
-    message_binary = message_bitarray.to01()
-    message_readable = ''.join(chr(int(message_binary[i:i+8], 2))
-                            for i in xrange(0, len(message_binary), 8))
-
-    index = message_readable.rfind('\r\n')
-    if index != -1:
-       message_readable = message_readable[:index]
-
-    print "Cipher text: " + cipher_hex
-    print "Decrypted text: " + message_readable
-
