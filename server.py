@@ -13,6 +13,7 @@ app = Flask(__name__, static_folder='game')
 
 conn = MySQLdb.connect(host="localhost", user="root", passwd="rootp", db="caves")
 conn.autocommit(True)
+conn.ping(True)
 cursor = conn.cursor()
 
 authenticDESTeams = dict();
@@ -248,7 +249,7 @@ def des():
 	    if req['teamname'] in authenticDESTeams:
 	        if authenticDESTeams[req['teamname']][0] == req['password']:
 		    if MD5(req['plaintext']) == authenticDESTeams[req['teamname']][2]:
-			cursor.execute("update cred set currentLevel = 4 where Team = %s", (req['teamname'],))
+			cursor.execute("update cred set currentLevel = 4 where Team = %s and currentLevel = 3", (req['teamname'],))
                         addAuthenticAESTeam(req['teamname'], req['password'])
                         response = {'success': True}
                     else:
@@ -275,7 +276,7 @@ def eaeae():
 	    if req['teamname'] in authenticAESTeams:
 	        if authenticAESTeams[req['teamname']][0] == req['password']:
 		    if MD5(req['plaintext']) == authenticAESTeams[req['teamname']][3]:
-			cursor.execute("update cred set currentLevel = 5 where Team = %s", (req['teamname'],))
+			cursor.execute("update cred set currentLevel = 5 where Team = %s and currentLevel = 4", (req['teamname'],))
                         response = {'success': True}
                     else:
 	                encText = getEAEAEEncryption(req['teamname'], req['plaintext'])
