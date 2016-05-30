@@ -9,40 +9,64 @@ from des import constants
 from eaeae import level5
 from OpenSSL import SSL
 import traceback
+import logging
 
-app = Flask(__name__, static_folder='game')
+logging.basicConfig(level=logging.DEBUG, filename='/tmp/caves.log')
+log = logging.getLogger('werkzeug')
+# prevent logging unnecessary info
+log.setLevel(logging.ERROR)
+
+staticFolder = 'game'
+app = Flask(__name__, static_folder=staticFolder)
+
+# takes input a string and returns another string with the non ASCII characters stripped
+def stripNonASCII(string):
+    stripped = (c for c in string if 0 < ord(c) < 127)
+    return ''.join(stripped)
 
 conn = MySQLdb.connect(host="localhost", user="root", passwd="rootp", db="caves")
 conn.autocommit(True)
+# ping the mysql server at regular interval so that the connection doesn't times
+# out due to inactivity
 conn.ping(True)
 cursor = conn.cursor()
 
+# caches information about the teams which are allowed to play the DES level
+# so that we don't have to query database every time they send an
+# encryption request
 authenticDESTeams = dict();
-cursor.execute("select a.Team, a.Password, b.DESKey, b.Password from cred a, level4 b where a.currentLevel > 2 and a.Team = b.Team");
+cursor.execute("select a.Team, a.Password, b.Password from cred a, level4 b where a.currentLevel > 2 and a.Team = b.Team");
 data = cursor.fetchall();
 for item in data:
-    authenticDESTeams[item[0]] = (item[1], item[2], item[3]);
-#print authenticDESTeams
+    authenticDESTeams[item[0]] = (item[1], item[2]);
 
-authenticAESTeams = dict();
-cursor.execute("select a.Team, a.Password, b.AMat, b.EVec, b.Password from cred a, level5 b where a.currentLevel > 3 and a.Team = b.Team");
+# caches information about the teams which are allowed to play the EAEAE level
+# so that we don't have to query database every time they send an
+# encryption request
+authenticEAEAETeams = dict();
+cursor.execute("select a.Team, a.Password, b.Password from cred a, level5 b where a.currentLevel > 3 and a.Team = b.Team");
 data = cursor.fetchall();
 for item in data:
-    authenticAESTeams[item[0]] = (item[1], item[2], item[3], item[4]);
-#print authenticAESTeams
+    authenticEAEAETeams[item[0]] = (item[1], item[2]);
 
+# function to add a team info to authenticDESTeams: will be called when a team
+# clears level 3 and moves to level 4
 def addAuthenticDESTeam(teamname, password):
-    cursor.execute("select DESKey, Password from level4 where Team = %s", (teamname,))
+    cursor.execute("select Password from level4 where Team = %s", (teamname,))
     if int(cursor.rowcount) > 0:
         result = cursor.fetchone()
-        authenticDESTeams[teamname] = (password, result[0], result[1])
+        authenticDESTeams[teamname] = (password, result[0])
 
-def addAuthenticAESTeam(teamname, password):
-    cursor.execute("select AMat, EVec, Password from level5 where Team = %s", (teamname,))
+# function to add a team info to authenticEAEAETeams: will be called when a team
+# clears level 4 and moves to level 5
+def addAuthenticEAEAETeam(teamname, password):
+    cursor.execute("select Password from level5 where Team = %s", (teamname,))
     if int(cursor.rowcount) > 0:
         result = cursor.fetchone()
-        authenticAESTeams[teamname] = (password, result[0], result[1], result[2])
+        authenticEAEAETeams[teamname] = (password, result[0])
 
+# cache the DES keys in the dictionary level4.keys, so that we don't need to
+# query database again and again
 cursor.execute("Select Team, DESKey from level4")
 result = cursor.fetchall()
 for item in result:
@@ -51,11 +75,10 @@ for item in result:
     keys_components = [(K0[0:28], K0[28:56])]
     level4.keys[item[0]] = pyDES.generateKeys(keys_components)
 
-#print level4.keys
-
+# cache the EAEAE keys in the dictionary level5.keys, so that we don't need to
+# query database again and again
 cursor.execute("Select Team, AMat, EVec from level5")
 result = cursor.fetchall()
-#print result
 for item in result:
     mat = []
     rows = item[1].split(";")
@@ -72,8 +95,9 @@ for item in result:
         vec.append(int(item1))
     level5.keys[item[0]] = (mat, vec)
 
-#print level5.keys
-
+# function to check authentication of a team.
+# inp: req body in json
+# out: Tuple (Is Auth Success, Current Level of Team, Wand Found or Not, Spirit Freed or Not)
 def checkauth(req):
     #print req
     if (not 'teamname' in req) or (not 'password' in req):
@@ -87,11 +111,18 @@ def checkauth(req):
     else:
 	return (False, 0, 0, 0)
 
+# returns md5 digest
+# inp: string to hash
+# out: digest in hex
 def MD5(text):
     m = hashlib.md5()
     m.update(text)
     return m.hexdigest()
 
+# fetch challenge for levels 1 to 5 and level 7. Function for level 6 is seperate
+# inp: level number, query data (in json string)
+# out: json response string directly to send to the client
+# parses input json to dict, validates it and returns appropriate response
 def levelnchallenge(n, data):
     try:
         #print data
@@ -109,11 +140,38 @@ def levelnchallenge(n, data):
         else:
 	    response = {'error': 'Maximum level is 7'}
             return json.dumps(response)
-    except Exception, e:
-        print e
+    except: # Exception, e:
+        logging.error(traceback.format_exc())
+        #print e
 	response = {'error': 'There is some problem with the server'}
         return json.dumps(response)
 
+# fetch challenge for level 6
+# out: json response string directly to send to the client
+def level6challenge():
+    try:
+        req = json.loads(request.data)
+        succ, level, d1, d2 = checkauth(req)
+        if succ is True and level >= 5:
+            cursor.execute("select n, Challenge from level6 where Team = %s", (req['teamname'],))
+            temp = cursor.fetchone()
+            challenge = "n=" + temp[0] + "\n\n" + req['teamname'] + ": This door has RSA encryption with exponent 5 and the password is " + temp[1]
+            response = {'challenge': challenge}
+        elif succ is True:
+            response = {'error': 'Solve previous chapters first'}
+        else:
+            response = {'error': 'Invalid Credentials'}
+        return json.dumps(response)
+    except: # Exception, e:
+        logging.error(traceback.format_exc())
+        #print e
+	response = {'error': 'There is some problem with the server'}
+        return json.dumps(response)
+
+# checks the solution a client sends
+# inp: level number, query data (in json string)
+# out: json response string directly to send to the client
+# parses input json to dict, validates it and returns appropriate response
 def checkLeveln(n, data):
     try:
 	if n < 8:
@@ -143,25 +201,30 @@ def checkLeveln(n, data):
 	    response = {'error': 'Maximum level is 7'}
             return json.dumps(response)
     except:
+        logging.error(traceback.format_exc())
 	response = {'error': 'There is some problem with the server'}
         return json.dumps(response)
 
+# navigate to our game url every time 404 error occurs
 @app.errorhandler(404)
 def pageNotFound(e):
     try:
         return redirect(url_for('static', filename='caves.html'))
-    except Exception, e:
-        print e
+    except: # Exception, e:
+        logging.error(traceback.format_exc())
+        #print e
 
+# route for browser icon
 @app.route("/favicon.ico")
 def favicon():
-    return send_from_directory(os.path.join(app.root_path, 'game'), 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+    return send_from_directory(os.path.join(app.root_path, staticFolder), 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
+# route for login
 @app.route("/login", methods=['POST'])
 def login():
     try:
         #print request.data
-        req = json.loads(request.data)
+        req = json.loads(stripNonASCII(request.data))
         succ, level, wf, sf = checkauth(req)
         if succ is True:
             response = {'ct': level, 'wf': bool(wf), 'sf': bool(sf)}
@@ -169,46 +232,30 @@ def login():
 	    response = {'error': 'Invalid Credentials'}
         #print response
         return json.dumps(response)
-    except Exception, e:
-        print e
+    except: # Exception, e:
+        #print e
+        logging.error(traceback.format_exc())
 	response = {'error': 'There is some problem with the server'}
         return json.dumps(response)
 
-
-def level6challenge():
-    try:
-        req = json.loads(request.data)
-        succ, level, d1, d2 = checkauth(req)
-        if succ is True and level >= 5:
-            cursor.execute("select n, Challenge from level6 where Team = %s", (req['teamname'],))
-            temp = cursor.fetchone()
-            challenge = "n=" + temp[0] + "\n\n" + req['teamname'] + ": This door has RSA encryption with exponent 5 and the password is " + temp[1]
-            response = {'challenge': challenge}
-        elif succ is True:
-            response = {'error': 'Solve previous chapters first'}
-        else:
-            response = {'error': 'Invalid Credentials'}
-        return json.dumps(response)
-    except Exception, e:
-        print e
-	response = {'error': 'There is some problem with the server'}
-        return json.dumps(response)
-
+# route for getting challenge for level 1 - 7
 @app.route("/challenge<int:n>", methods=['POST'])
 def getchallenge(n):
     if n == 6:
         return level6challenge()
     else:
-        return levelnchallenge(n, request.data)
+        return levelnchallenge(n, stripNonASCII(request.data))
 
+# route for checking solution of level 1 - 7
 @app.route("/checkLevel<int:n>", methods=['POST'])
 def checkLevel(n):
-    return checkLeveln(n, request.data)
+    return checkLeveln(n, stripNonASCII(request.data))
 
+# route for marking that a team has found the magical wand
 @app.route("/fw", methods=['POST'])
 def foundWand():
     try:
-        req = json.loads(request.data)
+        req = json.loads(stripNonASCII(request.data))
         succ, level, d1, d2 = checkauth(req)
         if succ is True:
             if level == 3:
@@ -221,13 +268,15 @@ def foundWand():
         #print response
         return json.dumps(response);
     except:
+        logging.error(traceback.format_exc())
 	response = {'error': 'There is some problem with the server'}
         return json.dumps(response)
 
+# route for marking that a team has freed the spirit
 @app.route("/fs", methods=['POST'])
 def freeSpirit():
     try:
-        req = json.loads(request.data)
+        req = json.loads(stripNonASCII(request.data))
         succ, level, d1, d2 = checkauth(req)
         if succ is True:
             if level == 3:
@@ -239,9 +288,13 @@ def freeSpirit():
             response = {'error': 'Invalid Credentials'}
         return json.dumps(response);
     except:
+        logging.error(traceback.format_exc())
 	response = {'error': 'There is some problem with the server'}
         return json.dumps(response)
 
+# function to get DES encryption of plaintext
+# inp: teamname, plaintext
+# out: challenge string if plaitext is 'password', otherwise the ciphertext
 def getDESEncryption(teamname, plaintext):
     if plaintext == 'password':
         cursor.execute("select Challenge from level4 where Team = %s", (teamname,))
@@ -249,6 +302,9 @@ def getDESEncryption(teamname, plaintext):
     else:
 	return level4.desEncryption(plaintext, teamname)
 
+# function to get EAEAE encryption of plaintext
+# inp: teamname, plaintext
+# out: challenge string if plaitext is 'password', otherwise the ciphertext
 def getEAEAEEncryption(teamname, plaintext):
     if plaintext == 'password':
         cursor.execute("select Challenge from level5 where Team = %s", (teamname,))
@@ -256,16 +312,17 @@ def getEAEAEEncryption(teamname, plaintext):
     else:
 	return level5.eaeaeEncryption(plaintext, teamname)
 
+# route to send DES encryption requests
 @app.route("/des", methods=['POST'])
 def des():
     try:
-        req = json.loads(request.data)
+        req = json.loads(stripNonASCII(request.data))
         if ('teamname' in req) and ('password' in req) and ('plaintext' in req):
 	    if req['teamname'] in authenticDESTeams:
 	        if authenticDESTeams[req['teamname']][0] == req['password']:
-		    if MD5(req['plaintext']) == authenticDESTeams[req['teamname']][2]:
+		    if MD5(req['plaintext']) == authenticDESTeams[req['teamname']][1]:
 			cursor.execute("update cred set currentLevel = 4 where Team = %s and currentLevel = 3", (req['teamname'],))
-                        addAuthenticAESTeam(req['teamname'], req['password'])
+                        addAuthenticEAEAETeam(req['teamname'], req['password'])
                         response = {'success': True}
                     else:
 	                encText = getDESEncryption(req['teamname'], req['plaintext'])
@@ -277,20 +334,22 @@ def des():
         else:
 	    response = {'error': 'POST parameters: teamname, password, plaintext'}
         return json.dumps(response)
-    except Exception, e:
-        print e
+    except: # Exception, e:
+        #print e
+        logging.error(traceback.format_exc())
 	response = {'error': 'There is some problem with the server'}
         return json.dumps(response)
 
+# route to send EAEAE encryption requests
 @app.route("/eaeae", methods=['POST'])
 def eaeae():
     try:
-        req = json.loads(request.data)
+        req = json.loads(stripNonASCII(request.data))
         #print req;
         if ('teamname' in req) and ('password' in req) and ('plaintext' in req):
-	    if req['teamname'] in authenticAESTeams:
-	        if authenticAESTeams[req['teamname']][0] == req['password']:
-		    if MD5(req['plaintext']) == authenticAESTeams[req['teamname']][3]:
+	    if req['teamname'] in authenticEAEAETeams:
+	        if authenticEAEAETeams[req['teamname']][0] == req['password']:
+		    if MD5(req['plaintext']) == authenticEAEAETeams[req['teamname']][1]:
 			cursor.execute("update cred set currentLevel = 5 where Team = %s and currentLevel = 4", (req['teamname'],))
                         response = {'success': True}
                     else:
@@ -303,9 +362,10 @@ def eaeae():
         else:
 	    response = {'error': 'POST parameters: teamname, password, plaintext'}
         return json.dumps(response)
-    except Exception, e:
-        print e.message
-        traceback.print_exc()
+    except: # Exception, e:
+        # print e.message
+        # traceback.print_exc()
+        logging.error(traceback.format_exc())
 	response = {'error': 'There is some problem with the server'}
         return json.dumps(response)
 
