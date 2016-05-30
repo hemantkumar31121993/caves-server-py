@@ -30,7 +30,7 @@ def convert(inp):
         if bigram in d_inv:
             tmp = int(d_inv[bigram])
         else:
-            tmp = 85
+            tmp = (ord(bigram[0]) + ord(bigram[1])) % 128
         res.append(tmp)
         i += 1
     return res

@@ -44,7 +44,7 @@ def convert(inp):
         if bigram in d_inv:
             tmp = format(int(d_inv[inp[2*i:2*i+2]]), 'b').zfill(8)
         else:
-            tmp = "01010101"
+            tmp = format((ord(bigram[0]) + ord(bigram[1])) % 256, 'b').zfill(8)
         res += tmp
         i += 1
     return res

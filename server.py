@@ -1,5 +1,6 @@
-from flask import Flask, request
+from flask import Flask, request, redirect, url_for, send_from_directory
 import MySQLdb
+import os
 import json
 import hashlib
 from des import level4
@@ -118,6 +119,9 @@ def checkLeveln(n, data):
 	if n < 8:
             req = json.loads(request.data)
 	    succ, level, d1, d2 = checkauth(req)
+            if level < n - 1:
+                response = {'error': 'Solve previous chapters first'}
+                return json.dumps(response)
 	    if not 'answer' in req:
 		response = {'error': 'Post data should contain an answer'}
 		return json.dumps(response)
@@ -141,6 +145,17 @@ def checkLeveln(n, data):
     except:
 	response = {'error': 'There is some problem with the server'}
         return json.dumps(response)
+
+@app.errorhandler(404)
+def pageNotFound(e):
+    try:
+        return redirect(url_for('static', filename='caves.html'))
+    except Exception, e:
+        print e
+
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'game'), 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 @app.route("/login", methods=['POST'])
 def login():
