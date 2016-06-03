@@ -10,6 +10,7 @@ from eaeae import level5
 from OpenSSL import SSL
 import traceback
 import logging
+import time
 
 logging.basicConfig(level=logging.DEBUG, filename='/tmp/caves.log')
 log = logging.getLogger('werkzeug')
@@ -168,7 +169,9 @@ def level6challenge():
 	response = {'error': 'There is some problem with the server'}
         return json.dumps(response)
 
-# checks the solution a client sends
+# checks the solution a client sends for levels 1,2,3,6,7.
+# checking solution for level 4 is done on /des endpoint
+# checking solution for level 5 is done on /eaeae endpoint
 # inp: level number, query data (in json string)
 # out: json response string directly to send to the client
 # parses input json to dict, validates it and returns appropriate response
@@ -190,6 +193,7 @@ def checkLeveln(n, data):
                         if n == 3:
                             addAuthenticDESTeam(req['teamname'], req['password']);
 			cursor.execute("update cred set currentLevel = " + str(n) + " where Team = %s", (req['teamname'],))
+                        cursor.execute("update level" + str(n) + " set CompletedAt = %s where Team = %s", (time.strftime('%Y-%m-%d %H:%M:%S'), req['teamname']))
 		    response = {'success': True}
 		else:
 		    response = {'success': False}
@@ -200,7 +204,8 @@ def checkLeveln(n, data):
         else:
 	    response = {'error': 'Maximum level is 7'}
             return json.dumps(response)
-    except:
+    except Exception, e:
+        print e
         logging.error(traceback.format_exc())
 	response = {'error': 'There is some problem with the server'}
         return json.dumps(response)
@@ -322,6 +327,7 @@ def des():
 	        if authenticDESTeams[req['teamname']][0] == req['password']:
 		    if MD5(req['plaintext']) == authenticDESTeams[req['teamname']][1]:
 			cursor.execute("update cred set currentLevel = 4 where Team = %s and currentLevel = 3", (req['teamname'],))
+                        cursor.execute("update level4 set CompletedAt = %s where Team = %s", (time.strftime('%Y-%m-%d %H:%M:%S'), req['teamname']))
                         addAuthenticEAEAETeam(req['teamname'], req['password'])
                         response = {'success': True}
                     else:
@@ -351,6 +357,8 @@ def eaeae():
 	        if authenticEAEAETeams[req['teamname']][0] == req['password']:
 		    if MD5(req['plaintext']) == authenticEAEAETeams[req['teamname']][1]:
 			cursor.execute("update cred set currentLevel = 5 where Team = %s and currentLevel = 4", (req['teamname'],))
+                        cursor.execute("update level5 set CompletedAt = %s where Team = %s", (time.strftime('%Y-%m-%d %H:%M:%S'), req['teamname']))
+                        addAuthenticEAEAETeam(req['teamname'], req['password'])
                         response = {'success': True}
                     else:
 	                encText = getEAEAEEncryption(req['teamname'], req['plaintext'])
@@ -369,7 +377,45 @@ def eaeae():
 	response = {'error': 'There is some problem with the server'}
         return json.dumps(response)
 
-#context1 = ('server.crt', 'server.key')
+# route to show stats to a client
+# suppose the client is on currentLevel n, then he will only gets stats
+# for levels <= n
+@app.route("/stats", methods=['POST'])
+def stats():
+    try:
+        req = json.loads(stripNonASCII(request.data))
+        succ, level, d1, d2 = checkauth(req)
+        if succ is True:
+            cursor.execute("select Team, currentLevel from cred")
+            results = cursor.fetchall();
+            temp = [[], [], [], [], [], [], []]
+            for item in results:
+                if int(item[1]) > 0 and level >= 1:
+                    temp[0].append(str(item[0]))
+                if int(item[1]) > 1 and level >= 2:
+                    temp[1].append(str(item[0]))
+                if int(item[1]) > 2 and level >= 3:
+                    temp[2].append(str(item[0]))
+                if int(item[1]) > 3 and level >= 4:
+                    temp[3].append(str(item[0]))
+                if int(item[1]) > 4 and level >= 5:
+                    temp[4].append(str(item[0]))
+                if int(item[1]) > 5 and level >= 6:
+                    temp[5].append(str(item[0]))
+                if int(item[1]) > 6 and level >= 7:
+                    temp[6].append(str(item[0]))
+            data = map(lambda x : ', '.join (y for y in x), temp)
+            response = {"stats": data}
+        else:
+            response = {'error': 'Invalid Credentials'}
+        #print json.dumps(response);
+        return json.dumps(response);
+    except:
+        logging.error(traceback.format_exc())
+	response = {'error': 'There is some problem with the server'}
+        return json.dumps(response)
+
+# code for running through SSL
 #context1 = ('server.crt', 'server.key')
 #app.run(host='0.0.0.0', port=9999, threaded=True, ssl_context=context1)
 
