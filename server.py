@@ -36,7 +36,7 @@ cursor = conn.cursor()
 # so that we don't have to query database every time they send an
 # encryption request
 authenticDESTeams = dict();
-cursor.execute("select a.Team, a.Password, b.Password from cred a, level4 b where a.currentLevel > 2 and a.Team = b.Team");
+cursor.execute("select a.Team, a.Password, b.Password from cred a, level4 b where a.currentLevel > 2 and a.SpiritFreed = 1 and a.Team = b.Team");
 data = cursor.fetchall();
 for item in data:
     authenticDESTeams[item[0]] = (item[1], item[2]);
@@ -192,8 +192,6 @@ def checkLeveln(n, data):
 		cursor.execute("select * from level" + str(n) + " where Team = %s and Password = %s", (req['teamname'], req['answer']))
 		if int(cursor.rowcount) > 0:
 		    if level == n - 1:
-                        if n == 3:
-                            addAuthenticDESTeam(req['teamname'], req['password']);
 			cursor.execute("update cred set currentLevel = " + str(n) + " where Team = %s", (req['teamname'],))
                         cursor.execute("update level" + str(n) + " set CompletedAt = %s where Team = %s", (time.strftime('%Y-%m-%d %H:%M:%S'), req['teamname']))
 		    response = {'success': True}
@@ -227,6 +225,8 @@ def favicon():
     return send_from_directory(os.path.join(app.root_path, staticFolder), 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 # route for login
+# post parameters: teamname, password
+# post format: json
 @app.route("/login", methods=['POST'])
 def login():
     try:
@@ -246,6 +246,8 @@ def login():
         return json.dumps(response)
 
 # route for getting challenge for level 1 - 7
+# post parameters: teamname, password
+# post format: json
 @app.route("/challenge<int:n>", methods=['POST'])
 def getchallenge(n):
     if n == 6:
@@ -254,11 +256,15 @@ def getchallenge(n):
         return levelnchallenge(n, stripNonASCII(request.data))
 
 # route for checking solution of level 1 - 7
+# post parameters: teamname, password, answer
+# post format: json
 @app.route("/checkLevel<int:n>", methods=['POST'])
 def checkLevel(n):
     return checkLeveln(n, stripNonASCII(request.data))
 
 # route for marking that a team has found the magical wand
+# post parameters: teamname, password
+# post format: json
 @app.route("/fw", methods=['POST'])
 def foundWand():
     try:
@@ -280,13 +286,17 @@ def foundWand():
         return json.dumps(response)
 
 # route for marking that a team has freed the spirit
+# post parameters: teamname, password
+# post format: json
 @app.route("/fs", methods=['POST'])
 def freeSpirit():
     try:
         req = json.loads(stripNonASCII(request.data))
         succ, level, d1, d2 = checkauth(req)
         if succ is True:
-            if level == 3:
+            if level == 3 and d1 == 1:
+                if req['teamname'] not in authenticDESTeams:
+                    addAuthenticDESTeam(req['teamname'], req['password'])
                 cursor.execute("update cred set SpiritFreed = 1 where Team = %s", (req['teamname'],))
                 response = {'success': True}
             else:
@@ -320,6 +330,8 @@ def getEAEAEEncryption(teamname, plaintext):
 	return level5.eaeaeEncryption(plaintext, teamname)
 
 # route to send DES encryption requests
+# post parameters: teamname, password, plaintext
+# post format: json
 @app.route("/des", methods=['POST'])
 def des():
     try:
@@ -330,7 +342,8 @@ def des():
 		    if MD5(req['plaintext']) == authenticDESTeams[req['teamname']][1]:
 			cursor.execute("update cred set currentLevel = 4 where Team = %s and currentLevel = 3", (req['teamname'],))
                         cursor.execute("update level4 set CompletedAt = %s where Team = %s", (time.strftime('%Y-%m-%d %H:%M:%S'), req['teamname']))
-                        addAuthenticEAEAETeam(req['teamname'], req['password'])
+                        if req['teamname'] not in authenticEAEAETeams:
+                            addAuthenticEAEAETeam(req['teamname'], req['password'])
                         response = {'success': True}
                     else:
 	                encText = getDESEncryption(req['teamname'], req['plaintext'])
@@ -349,6 +362,8 @@ def des():
         return json.dumps(response)
 
 # route to send EAEAE encryption requests
+# post parameters: teamname, password, plaintext
+# post format: json
 @app.route("/eaeae", methods=['POST'])
 def eaeae():
     try:
@@ -381,6 +396,8 @@ def eaeae():
 # route to show stats to a client
 # suppose the client is on currentLevel n, then he will only gets stats
 # for levels <= n
+# post parameters: teamname, password
+# post format: json
 @app.route("/stats", methods=['POST'])
 def stats():
     try:
@@ -417,8 +434,8 @@ def stats():
         return json.dumps(response)
 
 # code for running through SSL
-#context1 = ('server.crt', 'server.key')
-#app.run(host='0.0.0.0', port=9999, threaded=True, ssl_context=context1)
+context1 = ('server.crt', 'server.key')
+app.run(host='0.0.0.0', port=9999, threaded=True, ssl_context=context1)
 
-app.run(host='0.0.0.0', port=9999, threaded=True)
+#app.run(host='0.0.0.0', port=9999, threaded=True)
 
