@@ -53,18 +53,20 @@ for item in data:
 # function to add a team info to authenticDESTeams: will be called when a team
 # clears level 3 and moves to level 4
 def addAuthenticDESTeam(teamname, password):
-    cursor.execute("select Password from level4 where Team = %s", (teamname,))
-    if int(cursor.rowcount) > 0:
-        result = cursor.fetchone()
-        authenticDESTeams[teamname] = (password, result[0])
+    if teamname not in authenticDESTeams:
+        cursor.execute("select Password from level4 where Team = %s", (teamname,))
+        if int(cursor.rowcount) > 0:
+            result = cursor.fetchone()
+            authenticDESTeams[teamname] = (password, result[0])
 
 # function to add a team info to authenticEAEAETeams: will be called when a team
 # clears level 4 and moves to level 5
 def addAuthenticEAEAETeam(teamname, password):
-    cursor.execute("select Password from level5 where Team = %s", (teamname,))
-    if int(cursor.rowcount) > 0:
-        result = cursor.fetchone()
-        authenticEAEAETeams[teamname] = (password, result[0])
+    if teamname not in authenticEAEAETeams:
+        cursor.execute("select Password from level5 where Team = %s", (teamname,))
+        if int(cursor.rowcount) > 0:
+            result = cursor.fetchone()
+            authenticEAEAETeams[teamname] = (password, result[0])
 
 # cache the DES keys in the dictionary level4.keys, so that we don't need to
 # query database again and again
@@ -358,7 +360,6 @@ def eaeae():
 		    if MD5(req['plaintext']) == authenticEAEAETeams[req['teamname']][1]:
 			cursor.execute("update cred set currentLevel = 5 where Team = %s and currentLevel = 4", (req['teamname'],))
                         cursor.execute("update level5 set CompletedAt = %s where Team = %s", (time.strftime('%Y-%m-%d %H:%M:%S'), req['teamname']))
-                        addAuthenticEAEAETeam(req['teamname'], req['password'])
                         response = {'success': True}
                     else:
 	                encText = getEAEAEEncryption(req['teamname'], req['plaintext'])
