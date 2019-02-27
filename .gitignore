@@ -1,3 +1,6 @@
 *.pyc
 *~
 *.swp
+Caves/NewCred/level*.sql
+Caves/NewCred/cred_init.sql
+Caves/NewCred/teams
