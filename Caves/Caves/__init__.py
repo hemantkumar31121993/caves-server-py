@@ -1,4 +1,5 @@
 from flask import Flask, request, redirect, url_for, send_from_directory
+import dbsettings as db
 import MySQLdb
 import os
 import json
@@ -25,7 +26,7 @@ def stripNonASCII(string):
     stripped = (c for c in string if 0 < ord(c) < 127)
     return ''.join(stripped)
 
-conn = MySQLdb.connect(host="localhost", user="root", passwd="duleshwari", db="caves")
+conn = MySQLdb.connect(host=db.host, user=db.user, passwd=db.password, db=db.database)
 conn.autocommit(True)
 # ping the mysql server at regular interval so that the connection doesn't times
 # out due to inactivity
