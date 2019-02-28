@@ -362,6 +362,31 @@ def des():
         response = {'error': 'There is some problem with the server'}
         return json.dumps(response)
 
+# route to send DES encryption requests for pair generation
+# post parameters: teamname, password, plaintext
+# post format: json
+@app.route("/desgen", methods=['POST'])
+def desgen():
+    try:
+        req = json.loads(stripNonASCII(request.data))
+        if ('teamname' in req) and ('password' in req) and ('plaintext' in req):
+            if req['teamname'] in authenticDESTeams:
+                if authenticDESTeams[req['teamname']][0] == MD5(req['password']):
+                    encText = getDESEncryption(req['teamname'], req['plaintext'])
+                    response = {'ciphertext': encText}
+                else:
+                    response = {'error': 'Invalid Credentials'}
+            else:
+                response = {'error': 'You are not allowed to play this level'}
+        else:
+            response = {'error': 'POST parameters: teamname, password, plaintext'}
+        return json.dumps(response)
+    except: # Exception, e:
+        #print e
+        logging.error(traceback.format_exc())
+        response = {'error': 'There is some problem with the server'}
+        return json.dumps(response)
+
 # route to send EAEAE encryption requests
 # post parameters: teamname, password, plaintext
 # post format: json
