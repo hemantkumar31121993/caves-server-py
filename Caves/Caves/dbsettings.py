@@ -1,4 +1,4 @@
-host = "localhost"
-user = "root"
-password = "password"
-database = "caves"
+host = "__host__"
+user = "__user__"
+password = "__password__"
+database = "__database__"
