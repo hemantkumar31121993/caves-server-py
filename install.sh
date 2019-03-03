@@ -28,7 +28,7 @@ if [ $? -eq 0 ]
 then
     echo "Python Flask" $FLASK "ok"
 else
-    apt install python-flask
+    apt install -y python-flask
 fi
 
 # bitarray
@@ -37,7 +37,7 @@ if [ $? -eq 0 ]
 then
     echo "Python Bitarray" $BITARRAY "ok"
 else
-    apt install python-bitarray
+    apt install -y python-bitarray
 fi
 
 # openssl
@@ -46,7 +46,7 @@ if [ $? -eq 0 ]
 then
     echo "OPENSSL ok"
 else
-    apt install openssl
+    apt install -y openssl
 fi
 # openssl python library
 PYOPENSSL=$(python -c "import OpenSSL; print OpenSSL.__version__" 2>&1)
@@ -54,7 +54,7 @@ if [ $? -eq 0 ]
 then
     echo "Python OpenSSL" $PYOPENSSL "ok"
 else
-    sudo apt install python-openssl
+    apt install -y python-openssl
 fi
 # mysql
 MYSQL=$(command -v mysql)
@@ -62,14 +62,14 @@ if [ $? -eq 0 ]
 then
     echo $(mysql --version) "ok"
 else
-    apt install mysql-server
+    apt install -y mysql-server
 fi
 MYSQLDB=$(python -c "import MySQLdb; print MySQLdb.__version__" 2>&1)
 if [ $? -eq 0 ]
 then
     echo "Python MySQLdb" $MYSQLDB "ok"
 else
-    apt install python-mysqldb
+    apt install -y python-mysqldb
 fi
 
 # apache
@@ -79,39 +79,50 @@ then
     APACHE=$(apache2 -v | head -n1)
     echo "Apache" $APACHE "ok"
 else
-    apt install apache2
+    apt install -y apache2
+fi
+
+# apache mod_wsgi
+if [ -f "$APACHEDIR/mods-enabled/wsgi.conf" ]
+then
+    echo "Apache mod_wsgi" "ok"
+else
+    apt install -y libapache2-mod-wsgi
 fi
 
 echo "Dependencies" "ok"
 
 echo "Setting up database for caves"
 # mysql database creation for Caves
-echo "Database Name: Caves"
+printf "\tDatabase Name: Caves\n"
 #read DATABASE, database name is hardwired
 DATABASE="caves"
-printf "User: "
+printf "\tUser: "
 read USER
 if [ "$USER" = "" ]
 then
     USER="caves"
 fi
-printf "Password: "
+printf "\tPassword: "
 read PASSWORD
 while [ "$PASSWORD" = "" ]
 do
-    printf "Password: "
+    printf "\tPassword: "
     read PASSWORD
 done
-printf "Host: "
+printf "\tHost: "
 read HOST
 if [ "$HOST" = "" ]
 then
     HOST="localhost"
 fi
 
-echo "CREATE DATABASE $DATABASE;"
-echo "CREATE USER \"$USER\"@\"$HOST\" IDENTIFIED BY \"$PASSWORD\";"
-echo "GRANT ALL PRIVILEGES on $DATABASE.* TO \"$USER\"@\"$HOST\";"
+# echo "CREATE DATABASE $DATABASE;"
+echo "CREATE USER \"$USER\"@\"$HOST\" IDENTIFIED BY \"$PASSWORD\";" >> Caves/NewCred/sqlinit.sql
+echo "" >> Caves/NewCred/sqlinit.sql
+echo "GRANT ALL PRIVILEGES on $DATABASE.* TO \"$USER\"@\"$HOST\";" >> Caves/NewCred/sqlinit.sql
+
+mysql -u root -p < Caves/NewCred/sqlinit.sql
 
 #copying files to INSTALLDIR
 printf "copying files to $INSTALLDIR"
