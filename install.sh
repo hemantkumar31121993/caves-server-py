@@ -83,7 +83,8 @@ else
 fi
 
 # apache mod_wsgi
-if [ -f "$APACHEDIR/mods-enabled/wsgi.conf" ]
+WSGI=$(a2enmod wsgi > /dev/null 2>&1)
+if [ $? -eq 0 ]
 then
     echo "Apache mod_wsgi" "ok"
 else
@@ -122,6 +123,7 @@ echo "CREATE USER \"$USER\"@\"$HOST\" IDENTIFIED BY \"$PASSWORD\";" >> Caves/New
 echo "" >> Caves/NewCred/sqlinit.sql
 echo "GRANT ALL PRIVILEGES on $DATABASE.* TO \"$USER\"@\"$HOST\";" >> Caves/NewCred/sqlinit.sql
 
+echo "Running: mysql -u root -p < Caves/NewCred/sqlinit.sql"
 mysql -u root -p < Caves/NewCred/sqlinit.sql
 
 #copying files to INSTALLDIR
@@ -148,6 +150,6 @@ a2ensite Caves.conf > /dev/null 2>&1
 printf " ok\n"
 
 printf "Restarting Apache server"
-# service apache2 stop > /dev/null 2>&1
-# service apache2 start > /dev/null 2>&1
+service apache2 stop > /dev/null 2>&1
+service apache2 start > /dev/null 2>&1
 printf " ok\n"
